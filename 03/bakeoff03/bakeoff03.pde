@@ -12,7 +12,7 @@ float screenZ = 50f;
 int trialCount = 4; //this will be set higher for the bakeoff
 int border = 10; //have some padding from the sides
 int trialIndex = 0;
-int errorCount = 0;  
+int errorCount = 0;
 int startTime = 0; // time starts when the first click is captured
 int finishTime = 0; //records the time of the final click
 boolean userDone = false;
@@ -79,6 +79,9 @@ void draw() {
 
   fill(255, 0, 0); //set color to semi translucent
   rect(0, 0, t.z, t.z);
+
+  fill(0);
+  ellipse(0, 0, 3, 3);
 
   popMatrix();
 
@@ -163,13 +166,13 @@ void mouseReleased()
 }
 
 //function for testing if the overlap is sufficiently close
-//Don't change this function! Check with Chris if you think you have to.  
+//Don't change this function! Check with Chris if you think you have to.
 boolean checkForSuccess()
 {
-  Target t = targets.get(trialIndex);  
+  Target t = targets.get(trialIndex);
   boolean closeDist = dist(t.x, t.y, -screenTransX, -screenTransY)<15;
   boolean closeRotation = abs(t.rotation - screenRotation)%90<7;
-  boolean closeZ = abs(t.z - screenZ)<8;  
+  boolean closeZ = abs(t.z - screenZ)<8;
   println("Close Enough Distance: " + closeDist);
   println("Close Enough Rotation: " + closeRotation);
   println("Close Enough Z: " + closeZ);
