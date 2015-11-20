@@ -28,6 +28,7 @@ Vector2D dragEnd;
 boolean hasStarted = false;
 int curTrial = 0;
 int numTrials = 4;
+int deltaTrials = 0;
 CRectangle target;
 
 // Vibration
@@ -114,7 +115,8 @@ void draw() {
   noStroke();
 
   if (!hasStarted) {
-    String message = "Your first of " + numTrials + " trials starts once you tap.\n";
+    String message = "Your first of " + (numTrials + deltaTrials)
+      + " trials starts once you tap.\n";
 
     textAlign(CENTER, TOP);
     white.drawFill();
@@ -185,16 +187,20 @@ void draw() {
     }
   }
   else {
-    // TODO(jez) Display information at end of game
+    String message = getResults();
+
+    textAlign(CENTER, TOP);
+    white.drawFill();
+    text(message, vp.getCenter().x, vp.getCenter().y * 0.8);
   }
 }
 
 void mousePressed() {
   if (!hasStarted) {
-    hasStarted = true;
-    trials.get(curTrial).start();
+    dragStart = new Vector2D(mouseX, mouseY);
+    dragEnd = new Vector2D(mouseX, mouseY);
   }
-  else {
+  else if (curTrial < numTrials) {
     // TODO(jez) implement action/control processing logic
     String action = getAction();
 
@@ -209,66 +215,93 @@ void mousePressed() {
 }
 
 void mouseDragged() {
-  if (!curAction.equals("")) {
+  if (!hasStarted) {
     dragEnd = new Vector2D(mouseX, mouseY);
+    Vector2D delta = dragEnd.sub(dragStart);
 
-    String action = getAction();
-    // If we've moved from one of the sliders/buttons into the main drag area,
-    // treat this as a center drag event.
-    if (!curAction.equals("CENTER_DRAG") &&
-        (action.equals("CENTER_DRAG") ||
-         curAction.equals("NEXT"))) {
-      curAction = action;
-      dragStart = new Vector2D(mouseX, mouseY);
+    deltaTrials = (int) (-delta.y / i2p(0.25));
+  }
+  else if (curTrial < numTrials) {
+    if (!curAction.equals("")) {
       dragEnd = new Vector2D(mouseX, mouseY);
+
+      String action = getAction();
+      // If we've moved from one of the sliders/buttons into the main drag area,
+      // treat this as a center drag event.
+      if (!curAction.equals("CENTER_DRAG") &&
+          (action.equals("CENTER_DRAG") ||
+           curAction.equals("NEXT"))) {
+        curAction = action;
+        dragStart = new Vector2D(mouseX, mouseY);
+        dragEnd = new Vector2D(mouseX, mouseY);
+      }
     }
-  }
 
-  // Check for vibration
-  Vector2D delta = dragEnd.sub(dragStart);
-  CRectangle curTarget = trials.get(curTrial).target;
-  curTarget = withTransformations(curTarget, delta);
+    // Check for vibration
+    Vector2D delta = dragEnd.sub(dragStart);
+    CRectangle curTarget = trials.get(curTrial).target;
+    curTarget = withTransformations(curTarget, delta);
 
-  boolean newCenterCorrect = target.isCloseCenter(curTarget);
-  boolean newThetaCorrect  = target.isCloseTheta(curTarget);
-  boolean newDiamCorrect   = target.isCloseDiam(curTarget);
+    boolean newCenterCorrect = target.isCloseCenter(curTarget);
+    boolean newThetaCorrect  = target.isCloseTheta(curTarget);
+    boolean newDiamCorrect   = target.isCloseDiam(curTarget);
 
-  if (newCenterCorrect != hasCenterCorrect) {
-    vibe.vibrate(vibeDuration);
-  }
-  else if (newThetaCorrect != hasThetaCorrect) {
-    vibe.vibrate(vibeDuration);
-  }
-  else if (newDiamCorrect != hasDiamCorrect) {
-    vibe.vibrate(vibeDuration);
-  }
+    if (newCenterCorrect != hasCenterCorrect) {
+      vibe.vibrate(vibeDuration);
+    }
+    else if (newThetaCorrect != hasThetaCorrect) {
+      vibe.vibrate(vibeDuration);
+    }
+    else if (newDiamCorrect != hasDiamCorrect) {
+      vibe.vibrate(vibeDuration);
+    }
 
-  hasCenterCorrect = newCenterCorrect;
-  hasThetaCorrect = newThetaCorrect;
-  hasDiamCorrect = newDiamCorrect;
+    hasCenterCorrect = newCenterCorrect;
+    hasThetaCorrect = newThetaCorrect;
+    hasDiamCorrect = newDiamCorrect;
+  }
 }
 
 void mouseReleased() {
-  if (curTrial >= numTrials) {
+  if (!hasStarted) {
+    // Add one trial for every half inch you move up
+    numTrials += deltaTrials;
+    if (numTrials < 1) {
+      numTrials = 1;
+    }
+
+    if (deltaTrials == 0) {
+      // Only start when the number of trials hasn't changed
+      resetTrials();
+
+      hasStarted = true;
+      trials.get(curTrial).start();
+    }
+    else {
+      deltaTrials = 0;
+    }
+  }
+  else if (curTrial < numTrials) {
+    if (curAction.equals("NEXT")) {
+      performNext();
+    }
+    else if (curAction.equals("CENTER_DRAG")) {
+      performCenterDrag();
+    }
+    else if (curAction.equals("THETA_DRAG")) {
+      performThetaDrag();
+    }
+    else if (curAction.equals("DIAM_DRAG")) {
+      performDiamDrag();
+    }
+
+    curAction = "";
+    dragStart = new Vector2D();
+    dragEnd = new Vector2D();
+  }
+  else {
     resetSetup();
   }
-
-  if (curAction.equals("NEXT")) {
-    performNext();
-  }
-  else if (curAction.equals("CENTER_DRAG")) {
-    performCenterDrag();
-  }
-  else if (curAction.equals("THETA_DRAG")) {
-    performThetaDrag();
-  }
-  else if (curAction.equals("DIAM_DRAG")) {
-    performDiamDrag();
-  }
-
-  curAction = "";
-  dragStart = new Vector2D();
-  dragEnd = new Vector2D();
 }
 
 // ----- action dispatchers ---------------------------------------------------
@@ -314,10 +347,23 @@ int i2p(float x) {
   return (int) (x * DPI);
 }
 
+void resetTrials() {
+  trials = new ArrayList<Trial>();
+
+  for(int i = 0; i < numTrials; i++) {
+    CRectangle cur = new CRectangle();
+    cur.d     = sq(random(3.7f, 22.5f));
+    cur.c.x   = random(vp.start.x + cur.d, vp.getRightX() - cur.d);
+    cur.c.y   = random(vp.start.y + cur.d, vp.getBottomY() - cur.d);
+    cur.theta = random(0, 360);
+    trials.add(new Trial(cur));
+  }
+}
+
 void resetSetup() {
   curTrial = 0;
+  deltaTrials = 0;
   hasStarted = false;
-  trials = new ArrayList<Trial>();
 
   curAction = "";
   dragStart = new Vector2D();
@@ -327,15 +373,7 @@ void resetSetup() {
   hasThetaCorrect = false;
   hasDiamCorrect = false;
 
-  // initialize trials
-  for(int i = 0; i < numTrials; i++) {
-    CRectangle cur = new CRectangle();
-    cur.d     = sq(random(3.7f, 22.5f));
-    cur.c.x   = random(vp.start.x + cur.d, vp.getRightX() - cur.d);
-    cur.c.y   = random(vp.start.y + cur.d, vp.getBottomY() - cur.d);
-    cur.theta = random(0, 360);
-    trials.add(new Trial(cur));
-  }
+  resetTrials();
 }
 
 String getAction() {
@@ -368,6 +406,32 @@ CRectangle withTransformations(CRectangle base, Vector2D delta) {
   }
 
   return base;
+}
+
+int sumErrors() {
+  int result = 0;
+  for (Trial t : trials) {
+    result += t.getError();
+  }
+  return result;
+}
+
+int sumTimes() {
+  int result = 0;
+  for (Trial t : trials) {
+    result += t.getTime();
+  }
+  return result;
+}
+
+String getResults() {
+  String result = "";
+  float timeSeconds = sumTimes() / 1000.;
+  result += "Done!\n"
+    + "Errors: " + sumErrors() + "\n"
+    + "Time: " + timeSeconds + "s\n"
+    + "Average: " + (timeSeconds / numTrials) + "s per trial\n";
+  return result;
 }
 
 // ----- classes --------------------------------------------------------------
@@ -688,10 +752,6 @@ class Trial {
   int getTime() {
     return this.endTime - this.startTime;
   }
-
-  // TODO
-  //String toString() {}
-
 }
 
 class Control {
