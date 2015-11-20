@@ -75,13 +75,13 @@ void setup() {
                                   (height / 2) - (vpSize.y / 2));
   vp = new Rectangle(vpStart, vpSize);
 
-  // "restart" does some of the things we need to do at the very start as well
-  resetSetup();
-
   target = new CRectangle();
   target.c.x = vp.getCenter().x;
   target.c.y = vp.getCenter().y;
   target.d   = 150.f;
+
+  // "restart" does some of the things we need to do at the very start as well
+  resetSetup();
 
   // Build up controls
   controls.put("CENTER_DRAG",
@@ -115,7 +115,14 @@ void draw() {
 
   if (!hasStarted) {
     String message = "Your first of " + (numTrials + deltaTrials)
-      + " trials starts once you tap.\n";
+      + " trials starts once you tap.\n"
+      + "\n"
+      + ">> Tips <<\n"
+      + "Use the vibration to your advatage!\n"
+      + "(You'll find you can go quite quickly.)\n"
+      + "\n"
+      + "It works best to start by aligning the centers,\n"
+      + "then the crosshairs, then the sizes.\n";
 
     textAlign(CENTER, TOP);
     white.drawFill();
@@ -126,17 +133,17 @@ void draw() {
     darkgray.drawFill();
     vp.draw();
 
-    // Transform the curTarget
-    CRectangle curTarget = trials.get(curTrial).target;
+    // Transform the curActual
+    CRectangle curActual = trials.get(curTrial).actual;
     Vector2D delta = dragEnd.sub(dragStart);
-    curTarget = withTransformations(curTarget, delta);
+    curActual = withTransformations(curActual, delta);
 
     // Draw the targets, optionally leaving things out if they're already correct
     Color lineColor;
     Color dotColor;
     // will be used further down
     boolean canProceed = true;
-    if (target.isCloseDiam(curTarget)) {
+    if (curActual.isCloseDiam(target)) {
       brightblue.drawFill();
       lineColor = brightbluetrans;
       dotColor = brightbluetrans;
@@ -157,18 +164,18 @@ void draw() {
     target.draw();
 
     whitetrans.drawFill();
-    curTarget.draw();
+    curActual.draw();
 
-    if (!target.isCloseCenter(curTarget)) {
+    if (!curActual.isCloseCenter(target)) {
       white.drawFill();
       target.drawDot(dotRadius);
       dotColor.drawFill();
-      curTarget.drawDot(dotRadius);
+      curActual.drawDot(dotRadius);
 
       canProceed = false;
     }
 
-    if (target.isCloseTheta(curTarget)) {
+    if (curActual.isCloseTheta(target)) {
       controls.get("THETA_DRAG").bg = blacklightrans;
       controls.get("THETA_DRAG").fg = transparent;
     }
@@ -176,7 +183,7 @@ void draw() {
       white.drawStroke();
       target.drawCrosshair();
       lineColor.drawStroke();
-      curTarget.drawCrosshair();
+      curActual.drawCrosshair();
 
       controls.get("THETA_DRAG").bg = blacktrans;
       controls.get("THETA_DRAG").fg = white;
@@ -211,12 +218,11 @@ void draw() {
 }
 
 void mousePressed() {
-  if (!hasStarted) {
+  if (!hasStarted || curTrial >= numTrials) {
     dragStart = new Vector2D(mouseX, mouseY);
     dragEnd = new Vector2D(mouseX, mouseY);
   }
-  else if (curTrial < numTrials) {
-    // TODO(jez) implement action/control processing logic
+  else {
     String action = getAction();
 
     if (isValidAction(action)) {
@@ -254,12 +260,12 @@ void mouseDragged() {
 
     // Check for vibration
     Vector2D delta = dragEnd.sub(dragStart);
-    CRectangle curTarget = trials.get(curTrial).target;
-    curTarget = withTransformations(curTarget, delta);
+    CRectangle curActual = trials.get(curTrial).actual;
+    curActual = withTransformations(curActual, delta);
 
-    boolean newCenterCorrect = target.isCloseCenter(curTarget);
-    boolean newThetaCorrect  = target.isCloseTheta(curTarget);
-    boolean newDiamCorrect   = target.isCloseDiam(curTarget);
+    boolean newCenterCorrect = curActual.isCloseCenter(target);
+    boolean newThetaCorrect  = curActual.isCloseTheta(target);
+    boolean newDiamCorrect   = curActual.isCloseDiam(target);
 
     if (newCenterCorrect != hasCenterCorrect) {
       vibe.vibrate(vibeDuration);
@@ -274,6 +280,9 @@ void mouseDragged() {
     hasCenterCorrect = newCenterCorrect;
     hasThetaCorrect = newThetaCorrect;
     hasDiamCorrect = newDiamCorrect;
+  }
+  else {
+    dragEnd = new Vector2D(mouseX, mouseY);
   }
 }
 
@@ -300,14 +309,10 @@ void mouseReleased() {
     if (curAction.equals("NEXT")) {
       performNext();
     }
-    else if (curAction.equals("CENTER_DRAG")) {
-      performCenterDrag();
-    }
-    else if (curAction.equals("THETA_DRAG")) {
-      performThetaDrag();
-    }
-    else if (curAction.equals("DIAM_DRAG")) {
-      performDiamDrag();
+    else if (curAction.equals("CENTER_DRAG") ||
+             curAction.equals("THETA_DRAG") ||
+             curAction.equals("DIAM_DRAG")) {
+      performTransformations();
     }
 
     curAction = "";
@@ -315,7 +320,12 @@ void mouseReleased() {
     dragEnd = new Vector2D();
   }
   else {
-    resetSetup();
+    if (dragStart.equals(dragEnd)) {
+      resetSetup();
+    }
+
+    dragStart = new Vector2D();
+    dragEnd = new Vector2D();
   }
 }
 
@@ -323,37 +333,24 @@ void mouseReleased() {
 
 void performNext() {
   if (curTrial < numTrials) {
-    trials.get(curTrial).stop(target);
+    trials.get(curTrial).stop();
     curTrial++;
   }
 
   if (curTrial < numTrials) {
-    CRectangle curTarget = trials.get(curTrial).target;
-    hasCenterCorrect = target.isCloseCenter(curTarget);
-    hasThetaCorrect  = target.isCloseTheta(curTarget);
-    hasDiamCorrect   = target.isCloseDiam(curTarget);
+    CRectangle curActual = trials.get(curTrial).actual;
+    hasCenterCorrect = curActual.isCloseCenter(target);
+    hasThetaCorrect  = curActual.isCloseTheta(target);
+    hasDiamCorrect   = curActual.isCloseDiam(target);
 
     trials.get(curTrial).start();
   }
 }
 
-void performCenterDrag() {
+void performTransformations() {
   Vector2D delta = dragEnd.sub(dragStart);
-  CRectangle curTarget = trials.get(curTrial).target;
-  trials.get(curTrial).target = curTarget.translateCenter(delta);
-}
-
-void performThetaDrag() {
-  Vector2D delta = dragEnd.sub(dragStart);
-  CRectangle curTarget = trials.get(curTrial).target;
-  trials.get(curTrial).target = curTarget.rotateTheta(delta,
-      controls.get("THETA_DRAG").region.size);
-}
-
-void performDiamDrag() {
-  Vector2D delta = dragEnd.sub(dragStart);
-  CRectangle curTarget = trials.get(curTrial).target;
-  trials.get(curTrial).target = curTarget.scaleDiam(delta);
+  CRectangle curActual = trials.get(curTrial).actual;
+  trials.get(curTrial).actual = withTransformations(curActual, delta);
 }
 
 // ----- helpers --------------------------------------------------------------
@@ -371,7 +368,7 @@ void resetTrials() {
     cur.c.x   = random(vp.start.x + cur.d, vp.getRightX() - cur.d);
     cur.c.y   = random(vp.start.y + cur.d, vp.getBottomY() - cur.d);
     cur.theta = random(0, 360);
-    trials.add(new Trial(cur));
+    trials.add(new Trial(cur, target));
   }
 }
 
@@ -468,6 +465,10 @@ class Vector2D {
   Vector2D(float x, float y) {
     this.x = x;
     this.y = y;
+  }
+
+  boolean equals(Vector2D that) {
+    return abs(this.x - that.x) < 1e-6 && abs(this.y - that.y) < 1e-6;
   }
 
   public Vector2D add(Vector2D that) {
@@ -733,31 +734,28 @@ class Trial {
   public CRectangle target;
   public CRectangle actual;
 
-  Trial(CRectangle target) {
+  Trial(CRectangle actual, CRectangle target) {
+    this.actual = actual;
     this.target = target;
   }
 
   void start() {
     this.startTime = millis();
   }
-  void stop(CRectangle actual) {
+  void stop() {
     this.endTime = millis();
-    this.actual = actual;
   }
 
-  // Returns 1 if there was an error, else false
-  int getError(CRectangle test) {
-    if (target.isCloseCenter(test) &&
-        target.isCloseTheta(test) &&
-        target.isCloseDiam(test)) {
+  // Returns 1 if there was an error, else 0
+  int getError() {
+    if (actual.isCloseCenter(target) &&
+        actual.isCloseTheta(target) &&
+        actual.isCloseDiam(target)) {
       return 0;
     }
     else {
       return 1;
     }
-  }
-  int getError() {
-    return getError(this.actual);
   }
 
   int getTime() {
