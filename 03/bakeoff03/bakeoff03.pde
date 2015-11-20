@@ -367,7 +367,7 @@ void resetTrials() {
     cur.d     = sq(random(3.7f, 22.5f));
     cur.c.x   = random(vp.start.x + cur.d, vp.getRightX() - cur.d);
     cur.c.y   = random(vp.start.y + cur.d, vp.getBottomY() - cur.d);
-    cur.theta = random(0, 360);
+    cur.theta = random(0, 90);
     trials.add(new Trial(cur, target));
   }
 }
@@ -647,7 +647,7 @@ class CRectangle {
 
   CRectangle(CRectangle that) {
     this.c     = new Vector2D(that.c);
-    this.theta = that.theta;
+    this.theta = ((that.theta % 90) + 90) % 90;
     this.d     = that.d;
   }
 
@@ -659,10 +659,12 @@ class CRectangle {
   }
 
   float getThetaDiff(CRectangle that) {
-    return (this.theta - that.theta + 360) % 90;
+    float angle = this.theta - that.theta;
+    angle = ((angle % 90) + 90) % 90;
+    return Math.min(angle, 90 - angle);
   }
   boolean isCloseTheta(CRectangle that) {
-    return getThetaDiff(that) < 7;
+    return getThetaDiff(that) < 5;
   }
 
   float getDiamDiff(CRectangle that) {
@@ -682,6 +684,7 @@ class CRectangle {
     float maxScale = size.x;
     CRectangle result = new CRectangle(this);
     result.theta -= (delta.x / (0.9 * maxScale)) * 180;
+    result.theta = ((result.theta % 90) + 90) % 90;
     return result;
   }
 
