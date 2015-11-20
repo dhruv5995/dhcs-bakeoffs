@@ -39,27 +39,26 @@ boolean hasThetaCorrect;
 boolean hasDiamCorrect;
 
 // Color palette
-Color transparent    = new Color(0, 0);
+Color transparent     = new Color(0, 0);
 
-Color white          = new Color(238);
-Color whitetrans     = new Color(238, 0.5);
+Color white           = new Color(238);
+Color whitetrans      = new Color(238, 0.5);
 
-Color darkgray       = new Color(32);
+Color darkgray        = new Color(32);
 
-Color blacktrans     = new Color(0, 0.5);
-Color blacklightrans = new Color(0, 0.2);
+Color black           = new Color(0, 0.8);
+Color blacktrans      = new Color(0, 0.5);
+Color blacklightrans  = new Color(0, 0.2);
 
-Color red            = new Color(166, 43, 12);
+Color red             = new Color(166, 43, 12);
 
-Color brightblue     = new Color(0, 195, 255);
-Color blue           = new Color(0, 122, 255);
-Color bluetrans      = new Color(0, 122, 255, 0.5);
+Color blue            = new Color(0, 64, 133);
+Color bluetrans       = new Color(0, 64, 133, 0.5);
+Color brightblue      = new Color(26, 136, 255);
+Color brightbluetrans = new Color(26, 136, 255, 0.5);
 
-Color purple         = new Color(122, 0, 179);
-Color purpletrans    = new Color(122, 0, 179, 0.3);
-
-Color green          = new Color(68, 163, 0);
-Color greentrans     = new Color(68, 163, 0, 0.5);
+Color green           = new Color(68, 163, 0);
+Color greentrans      = new Color(68, 163, 0, 0.5);
 
 
 // ----- Processing callbacks -------------------------------------------------
@@ -92,7 +91,7 @@ void setup() {
           vp.size.sub(new Vector2D(thickness, thickness)))));
 
   controls.put("NEXT",
-      new Control("NEXT", green, white,
+      new Control("NEXT", black, white,
         new Rectangle(
           new Vector2D(vp.getRightX() - thickness, vp.start.y),
           new Vector2D(thickness, thickness))));
@@ -135,10 +134,12 @@ void draw() {
     // Draw the targets, optionally leaving things out if they're already correct
     Color lineColor;
     Color dotColor;
+    // will be used further down
+    boolean canProceed = true;
     if (target.isCloseDiam(curTarget)) {
-      green.drawFill();
-      lineColor = greentrans;
-      dotColor = greentrans;
+      brightblue.drawFill();
+      lineColor = brightbluetrans;
+      dotColor = brightbluetrans;
 
       controls.get("DIAM_DRAG").bg = blacklightrans;
       controls.get("DIAM_DRAG").fg = transparent;
@@ -150,6 +151,8 @@ void draw() {
 
       controls.get("DIAM_DRAG").bg = blacktrans;
       controls.get("DIAM_DRAG").fg = white;
+
+      canProceed = false;
     }
     target.draw();
 
@@ -161,6 +164,8 @@ void draw() {
       target.drawDot(dotRadius);
       dotColor.drawFill();
       curTarget.drawDot(dotRadius);
+
+      canProceed = false;
     }
 
     if (target.isCloseTheta(curTarget)) {
@@ -175,6 +180,16 @@ void draw() {
 
       controls.get("THETA_DRAG").bg = blacktrans;
       controls.get("THETA_DRAG").fg = white;
+
+      canProceed = false;
+    }
+
+    // Turn NEXT button green when we're all correct
+    if (canProceed) {
+      controls.get("NEXT").bg = green;
+    }
+    else {
+      controls.get("NEXT").bg = black;
     }
 
     // Draw all the controls
@@ -635,13 +650,6 @@ class CRectangle {
     this.d     = that.d;
   }
 
-  // TODO doesn't use theta
-  Rectangle getBounds() {
-    return new Rectangle(
-        new Vector2D(c.x - d / 2, c.y - d / 2),
-        new Vector2D(d, d));
-  }
-
   float getCenterDiff(CRectangle that) {
     return dist(this.c.x, this.c.y, that.c.x, that.c.y);
   }
@@ -653,7 +661,7 @@ class CRectangle {
     return (this.theta - that.theta + 360) % 90;
   }
   boolean isCloseTheta(CRectangle that) {
-    return getThetaDiff(that) < 5;
+    return getThetaDiff(that) < 7;
   }
 
   float getDiamDiff(CRectangle that) {
@@ -738,15 +746,18 @@ class Trial {
   }
 
   // Returns 1 if there was an error, else false
-  int getError() {
-    if (actual.isCloseCenter(target) &&
-        actual.isCloseTheta(target) &&
-        actual.isCloseDiam(target)) {
+  int getError(CRectangle test) {
+    if (target.isCloseCenter(test) &&
+        target.isCloseTheta(test) &&
+        target.isCloseDiam(test)) {
       return 0;
     }
     else {
       return 1;
     }
+  }
+  int getError() {
+    return getError(this.actual);
   }
 
   int getTime() {
