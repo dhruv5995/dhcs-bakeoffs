@@ -611,12 +611,19 @@ class Rectangle {
           -size.x/2 + s + h, -b);
 
       triangle(
-          size.x/2 - s - 0,  0,
-          size.x/2 - s - h,  b,
-          size.x/2 - s - h, -b);
+         size.x/2 - s - 0,  0,
+         size.x/2 - s - h,  b,
+         size.x/2 - s - h, -b);
     }
     else {
       line(0, -size.y/2 + i2p(0.2), 0, size.y/2 - i2p(0.2));
+      //-
+      line(-b, size.y/2-i2p(0.1) , b, size.y/2-i2p(0.1));
+      //+
+      line(-b, -size.y/2+i2p(0.1) , b, -size.y/2+i2p(0.1));
+      line(0, -size.y/2+i2p(0.06) , 0, -size.y/2 + i2p(0.14));
+
+
       noStroke();
 
       triangle(
@@ -790,4 +797,3 @@ class Control {
     region.drawMainAxis();
   }
 }
-
