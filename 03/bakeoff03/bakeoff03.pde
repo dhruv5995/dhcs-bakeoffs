@@ -364,7 +364,7 @@ void resetTrials() {
 
   for(int i = 0; i < numTrials; i++) {
     CRectangle cur = new CRectangle();
-    cur.d     = sq(random(3.7f, 22.5f));
+    cur.d     = random(i2p(0.15), i2p(1.5));
     cur.c.x   = random(vp.start.x + cur.d, vp.getRightX() - cur.d);
     cur.c.y   = random(vp.start.y + cur.d, vp.getBottomY() - cur.d);
     cur.theta = random(0, 90);
