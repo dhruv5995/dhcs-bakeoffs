@@ -1,14 +1,9 @@
 import java.util.ArrayList;
 
-// Utility wrapper around accessing the camera
-import ketai.camera.*;
-
-KetaiCamera cam;
-boolean echoImage;
-
-// Searching for the target point
-Color targetColor;
-Vector2D lastPoint; // camera space
+// Utility wrapper around accessing the sensors
+import ketai.sensors.*;
+KetaiSensor sensor;
+float z0;
 
 // Camera constants
 final int FPS = 16;
@@ -18,15 +13,9 @@ final Vector2D maxRes = new Vector2D(1280, 960);
 Vector2D scaledRes = maxRes.scale(FIDELITY);
 
 // Constants for the trial tasks
-final String TARGET_ONE   = "TARGET_ONE";
-final String TARGET_TWO   = "TARGET_TWO";
-final String TARGET_THREE = "TARGET_THREE";
-final String TARGET_FOUR  = "TARGET_FOUR";
-final String[] TARGETS = {TARGET_ONE, TARGET_TWO, TARGET_THREE, TARGET_FOUR};
-
-final String ACTION_ONE   = "ACTION_ONE";
-final String ACTION_TWO   = "ACTION_TWO";
-final String[] ACTIONS = {ACTION_ONE, ACTION_TWO};
+final String ACTION_CW  = "ACTION_CW";
+final String ACTION_CCW = "ACTION_CCW";
+final String[] ACTIONS  = {ACTION_CW, ACTION_CCW};
 
 // Grading and timing code
 ArrayList<Trial> trials;
@@ -34,12 +23,21 @@ int curTrial = 0;
 int numTrials = 4;
 boolean hasStarted = false;
 
+// Proximity sensing and target selection
+int selectedTarget;
+boolean isClose;
+int fromTime;
+final int cycleSpeed = 800;
+
+// Store the currently selected action
+String selectedAction;
+
 // Color palette
 Color pureRed = new Color(255, 0, 0);
 
-Color black           = new Color(0, 0.8);
-Color blacktrans      = new Color(0, 0.5);
-Color blacklightrans  = new Color(0, 0.2);
+Color black = new Color(0, 0.8);
+Color gray  = new Color(48, 48, 48);
+Color white = new Color(240, 240, 240);
 
 Color blue            = new Color(0, 64, 133);
 Color bluetrans       = new Color(0, 64, 133, 0.5);
@@ -53,8 +51,12 @@ void setup() {
   imageMode(CENTER);
   noStroke();
 
-  // Rotating the screen causes the camera to reset, so let's lock it
-  orientation(LANDSCAPE);
+  sensor = new KetaiSensor(this);
+  sensor.start();
+
+  orientation(PORTRAIT);
+
+  textFont(createFont("Arial", 36));
 
   resetSetup();
 }
@@ -63,98 +65,127 @@ void draw() {
   background(0);
 
   if (!hasStarted) {
-    // TODO(jezimmer): Consider drawing starting message
+    String message = "Your first of " + numTrials
+      + " trials starts once you tap.\n"
+      + "\n";
+
+    textAlign(CENTER, CENTER);
+    white.drawFill();
+    text(message, width/2, height/2);
+  }
+  else if (curTrial < numTrials) {
+
+    // Draw targets
+    int curTarget = getCurrentTarget();
+
+    pushMatrix();
+    translate(width/2, height/2);
+
+    int tw = 100;
+    Vector2D targetSize = new Vector2D(tw, tw);
+
+    Vector2D borderWidth = new Vector2D(20, 20);
+
+    Vector2D targetStart;
+    Rectangle rectTarget;
+
+    for (int i = 0; i < 4; i++) {
+      targetStart = new Vector2D(-tw/2, (-3.5 + 2*i) * tw);
+      rectTarget = new Rectangle(targetStart, targetSize);
+
+      // Draw outline around the target for the current trial
+      int targetTarget = trials.get(curTrial).targetTarget;
+      if (i == targetTarget) {
+        white.drawFill();
+        Vector2D borderStart = targetStart.sub(borderWidth);
+        Vector2D borderSize = targetSize.add(borderWidth.scale(2));
+        (new Rectangle(borderStart, borderSize)).draw();
+      }
+
+      if (i == curTarget) {
+        blue.drawFill();
+      }
+      else {
+        gray.drawFill();
+      }
+
+      rectTarget.draw();
+    }
+    popMatrix();
+
+    // Draw actions
+    float r = 80; // TODO(jezimmer): rename these
+    float R = 200;
+    String targetAction = trials.get(curTrial).targetAction;
+
+    white.drawFill();
+    if (targetAction.equals(ACTION_CCW)) {
+      ellipse(R/2, height/2, r, r);
+    }
+    else if (targetAction.equals(ACTION_CW)) {
+      ellipse(width - R/2, height/2, r, r);
+    }
+
+    Rectangle curActionDisplay = new Rectangle(0,0,0,0);
+    if (selectedAction.equals(ACTION_CCW)) {
+      curActionDisplay = new Rectangle(0, 0, R, height);
+    }
+    else if (selectedAction.equals(ACTION_CW)) {
+      curActionDisplay = new Rectangle(width - R, 0, R, height);
+    }
+
+    bluetrans.drawFill();
+    curActionDisplay.draw();
   }
   else {
-    // uses lastPoint to update lastPoint
-    lastPoint = findNearestPixel();
+    String message = getResults();
 
-    // Either write out the whole image, or just write the quadrants
-    if (echoImage) {
-      pushMatrix();
-      translate(width/2, height/2);
-      scale(-1, 1);
-      image(cam, 0, 0, width, height);
-      popMatrix();
-    }
-    else {
-      Rectangle camRect = new Rectangle(cam.width, cam.height);
-      int cursorQuadrant = camRect.getQuadrant(lastPoint.x, lastPoint.y);
-
-      // Quadrants are flipped because we're computing them with respect to
-      // the positive y-axis pointing down, and mirrored because we need to
-      // mirror the camera:
-      // 4 3
-      // 1 2
-      getColorForQuad(4, cursorQuadrant).drawFill();
-      (new Rectangle(0, 0, width/2, height/2)).draw();
-
-      getColorForQuad(3, cursorQuadrant).drawFill();
-      (new Rectangle(width/2, 0, width/2, height/2)).draw();
-
-      getColorForQuad(1, cursorQuadrant).drawFill();
-      (new Rectangle(0, height/2, width/2, height/2)).draw();
-
-      getColorForQuad(2, cursorQuadrant).drawFill();
-      (new Rectangle(width/2, height/2, width/2, height/2)).draw();
-    }
-
-    // Compute location of the cursor in screen space
-    Vector2D cursorPoint = reflectHorizontal(cameraToScreen(lastPoint), width);
-    targetColor.drawFill();
-    ellipseMode(CENTER);
-    ellipse(cursorPoint.x, cursorPoint.y, 50, 50);
+    textAlign(CENTER, CENTER);
+    white.drawFill();
+    text(message, width/2, height/2);
   }
 }
 
-/*
- * Required to be able to use the camera. Other than that, I'm not sure how
- * this function works.
- */
-void onCameraPreviewEvent() {
-  cam.read();
+void onProximityEvent(float d) {
+  if (isClose && d > 1e-6) {
+    // Save the current target
+    selectedTarget = getCurrentTarget();
+
+    // Hand retreated from sensor
+    isClose = false;
+  }
+  else if (!isClose && d < 1e-6) {
+    // Hand approached sensor
+
+    isClose = true;
+
+    // We're about to start the targets moving again, so let's set the fromTime
+    // so that there's no "jump" in which target is selected.
+    fromTime = cycleSpeed * selectedTarget;
+  }
+
+  performNext();
+}
+
+void onAccelerometerEvent(float x, float y, float z) {
+  float tiltThreshold = 2.;
+  if (x < -tiltThreshold) {
+    selectedAction = ACTION_CW;
+  }
+  else if (x > tiltThreshold) {
+    selectedAction = ACTION_CCW;
+  }
+  else {
+    selectedAction = "";
+  }
+
+  performNext();
 }
 
 void mousePressed() {
-  // If the game hasn't started yet, we want to start a countdown timer
-  // that will start the first trial's timer.
   if (!hasStarted) {
-    // TODO(jezimmer): Implement initial countdown timer.
     hasStarted = true;
-  }
-
-  // First touch is always to initialize the camera
-  if (cam == null) {
-    cam = new KetaiCamera(this, (int) scaledRes.x, (int) scaledRes.y, FPS);
-    cam.setCameraID(/* front-facing camera */ 1);
-    cam.start();
-
-    return;
-  }
-
-  // We want the image to not be displayed when we're trying to actually
-  // perform the trials, but it's useful to help orient the sensor
-  // initially (so you can be sure you're clicking on the right object).
-
-  if (echoImage) {
-    // Pluck color at current tap and turn off image echoing
-
-    Vector2D lastPoint = getPointUnderMouse();
-    int cx = (int) lastPoint.x;
-    int cy = (int) lastPoint.y;
-    int idx = cy*cam.width + cx;
-    targetColor = new Color(cam.pixels[idx]);
-
-    echoImage = false;
-  }
-  else {
-    // Turn image echoing back on
-    echoImage = true;
-
-    // Note that we don't reset targetColor or lastPoint. For one,
-    // lastPoint would continue to be updated elsewhere, but more
-    // importantly, we want to be able to debug whether the point is
-    // actually on top of a reasonable spot in the image.
+    fromTime = millis();
   }
 }
 
@@ -164,157 +195,90 @@ void resetTrials() {
   trials = new ArrayList<Trial>();
 
   for (int i = 0; i < numTrials; i++) {
-    String target = TARGETS[((int) random(0, 4))];
-    String action = TARGETS[((int) random(0, 2))];
-    String expected = target + action;
+    int target = (int) random(0, 4);
+    String action = ACTIONS[(int) random(0, 2)];
 
-    trials.add(new Trial(expected));
+    trials.add(new Trial(target, action));
   }
 }
-void resetSetup() {
-  targetColor = new Color(0);
-  lastPoint = new Vector2D();
 
+void resetSetup() {
   curTrial = 0;
   hasStarted = false;
-  echoImage = true;
+
+  selectedTarget = 0;
+  selectedAction = "";
+  isClose = false;
+  fromTime = millis();
 
   resetTrials();
 }
 
 /*
- * Helper functions for converting between screen-space coordinates (width
- * x height) and camera-space coordinates (cam.width x cam.height)
- */
-Vector2D screenToCamera(Vector2D in) {
-  return in.scale(cam.width, cam.height).scale(1. / width, 1. / height);
-}
-Vector2D cameraToScreen(Vector2D in) {
-  return in.scale(width, height).scale(1. / cam.width, 1. / cam.height);
-}
-
-/*
- * Reflects a point within a rectangle of width `width` across the center
- * of the rectangle.
+ * We want to return the pre-selected target if the hand is far away.
  *
- * This is useful because the image from the camera needs to be mirrored
- * when it's displayed, so points drawn onto this canvas won't match up
- * with the correct position in the image unless flipped.
+ * Otherwise, use the difference between the current time and the fromTime
+ * (i.e., the time when the targets started moving), get the current target to
+ * highlight.
  */
-Vector2D reflectHorizontal(Vector2D in, float width) {
-  return new Vector2D(width - in.x, in.y);
-}
-
-/*
- * Use the current mouse location (mouseX, mouseY) to get a point in the
- * camera image.
- *
- * First scales the screen space to the camera space, then flips the point
- * (so the output is in mirrored camera space).
- */
-Vector2D getPointUnderMouse() {
-  Vector2D screenTap = new Vector2D(mouseX, mouseY);
-  Vector2D cameraTap = screenToCamera(reflectHorizontal(screenTap, width));
-
-  cameraTap.x = (int) cameraTap.x;
-  cameraTap.y = (int) cameraTap.y;
-
-  return cameraTap;
-}
-
-/*
- * Return the PixelGuess that has the smallest distance: the current one or
- * the one created by looking under the pixel (x, y) in the image.
- *
- * This isn't a very nicely factored function. Ideally, we'd separate the
- * min() logic from camera reading logic. But Java doesn't have a
- * (sufficiently succint) way of taking a min over arbitrary members of a
- * class, so why even try.
- */
-PixelGuess minDist(int x, int y, PixelGuess in) {
-  int idx = y*cam.width + x;
-
-  if (!(0 <= idx && idx < cam.pixels.length)) return in;
-
-  Color curColor = new Color(cam.pixels[idx]);
-  float curDist = targetColor.dist(curColor);
-
-  if (curDist < in.dist) {
-    return new PixelGuess(x, y, curDist);
+int getCurrentTarget() {
+  if (isClose) {
+    return ((millis() - fromTime) / cycleSpeed) % 4;
   }
   else {
-    return in;
+    return selectedTarget;
   }
 }
 
 /*
- * Return a particular shade, depending on whether the currentQuad is in
- * the same quadrant as the cursor.
+ * Stop the current trial, and advance to the next one (providing either of
+ * these things are legal).
  */
-Color getColorForQuad(int currentQuad, int cursorQuad) {
-  if (currentQuad == cursorQuad) {
-    return blue;
-  }
-  else {
-    return blacktrans;
+void performNext() {
+  if (curTrial < numTrials) {
+    if (trials.get(curTrial).isCorrect(selectedTarget, selectedAction)) {
+      System.out.println("Correct!");
+      if (curTrial < numTrials) {
+        trials.get(curTrial).stop(selectedTarget, selectedAction);
+        curTrial++;
+      }
+
+      if (curTrial < numTrials) {
+        trials.get(curTrial).start();
+      }
+    }
   }
 }
 
+int sumErrors() {
+  int result = 0;
+  for (Trial t : trials) {
+    result += t.getError();
+  }
+  return result;
+}
+
+int sumTimes() {
+  int result = 0;
+  for (Trial t : trials) {
+    result += t.getTime();
+  }
+  return result;
+}
 
 /*
- * Starting at lastPoint, search in rings outward to find the nearest point
- * in the camera image whose color is within THRESHOLD of the targetColor.
  *
- * Super stateful, but I think it'll be ok.
  */
-Vector2D findNearestPixel() {
-  // 442 > sqrt(255^2 + 255^2 + 255^2) = max distance
-  PixelGuess result = new PixelGuess(0, 0, 442.);
-
-  // Start at the last point, so we can search more quickly and our search
-  // is more stable (results in points close to where we think the object
-  // was).
-  int x0 = (int) lastPoint.x;
-  int y0 = (int) lastPoint.y;
-
-  int maxR = max(cam.width, cam.height);
-
-  // I wish there was a cleaner way :'(
-  for (int r = 0; r < maxR; r++) {
-    int x;
-    int y = y0 - r;
-    if (0 <= y) {
-      for (x = x0 - r; x <= x0 + r; x++) {
-        result = minDist(x, y, result);
-      }
-    }
-
-    x = x0 + r;
-    if (x < width) {
-      for (y = y0 - r + 1; y < y0 + r - 1; y++) {
-        result = minDist(x, y, result);
-      }
-    }
-
-    y = y0 + r;
-    if (y < height) {
-      for (x = x0 - r; x <= x0 + r; x++) {
-        result = minDist(x, y, result);
-      }
-    }
-
-    x = x0 - r;
-    if (0 <= x) {
-      for (y = y0 - r + 1; y < y0 + r - 1; y++) {
-        result = minDist(x, y, result);
-      }
-    }
-
-    if (result.dist < THRESHOLD) break;
-  }
-
-  return new Vector2D(result.x, result.y);
+String getResults() {
+  String result = "";
+  float timeSeconds = sumTimes() / 1000.;
+  result += "Done!\n"
+    + "Errors: " + sumErrors() + "\n"
+    + "Time: " + timeSeconds + "s\n"
+    + "Average: " + (timeSeconds / numTrials) + "s per trial\n";
+  return result;
 }
+
 
 // ----- classes --------------------------------------------------------------
 
@@ -488,12 +452,12 @@ class Rectangle {
   public Vector2D start;
   public Vector2D size;
 
-  Rectangle(int width, int height) {
+  Rectangle(float width, float height) {
     this.start = new Vector2D(0, 0);
     this.size = new Vector2D(width, height);
   }
 
-  Rectangle(int startX, int startY, int width, int height) {
+  Rectangle(float startX, float startY, float width, float height) {
     this.start = new Vector2D(startX, startY);
     this.size = new Vector2D(width, height);
   }
@@ -545,41 +509,43 @@ class Rectangle {
   }
 }
 
-class PixelGuess {
-  public int x;
-  public int y;
-  public float dist;
-
-  PixelGuess(int x, int y, float dist) {
-    this.x = x;
-    this.y = y;
-    this.dist = dist;
-  }
-}
-
 class Trial {
   public int startTime;
   public int endTime;
 
-  public String target;
-  public String actual;
+  public int targetTarget;
+  public int actualTarget;
+  public String targetAction;
+  public String actualAction;
 
-  Trial(String target) {
-    this.target = target;
+  Trial(int targetTarget, String targetAction) {
+    this.targetTarget = targetTarget;
+    this.targetAction = targetAction;
   }
 
   void start() {
     this.startTime = millis();
   }
-  void stop(String actual) {
+  void stop(int actualTarget, String actualAction) {
     this.endTime = millis();
-    this.actual = actual;
+    this.actualTarget = actualTarget;
+    this.actualAction = actualAction;
+  }
+
+  boolean isCorrect(int target, String action) {
+    System.out.println(target + " : " + targetTarget);
+    System.out.println(action + " : " + targetAction);
+    return target == targetTarget && action.equals(targetAction);
   }
 
   // Returns 1 if there was an error, else 0
   int getError() {
-    // TODO(jezimmer): Implement this function accordingly
-    return 0;
+    if (isCorrect(actualTarget, actualAction)) {
+      return 0;
+    }
+    else {
+      return 1;
+    }
   }
 
   int getTime() {
