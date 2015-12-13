@@ -28,12 +28,15 @@ ArrayList<Trial> trials;
 int curTrial = 0;
 int numTrials = 4;
 boolean hasStarted = false;
+boolean hasPressed;
 
 // Proximity sensing and target selection
+float lightEpsilon = 2;
 int selectedTarget;
 boolean isClose;
 int fromTime;
-final int cycleSpeed = 800;
+int toTime;
+final int cycleSpeed = 700;
 
 // Store the currently selected action
 String selectedAction;
@@ -45,10 +48,14 @@ Color black = new Color(0, 0.8);
 Color gray  = new Color(48, 48, 48);
 Color white = new Color(240, 240, 240);
 
-Color blue            = new Color(0, 64, 133);
-Color bluetrans       = new Color(0, 64, 133, 0.5);
+//Color blue            = new Color(0, 64, 133);
+//Color bluetrans       = new Color(0, 64, 133, 0.5);
 Color brightblue      = new Color(26, 136, 255);
 Color brightbluetrans = new Color(26, 136, 255, 0.5);
+
+Color green           = new Color(68, 163, 0);
+Color greentrans      = new Color(68, 163, 0, 0.5);
+
 
 
 // ----- Processing callbacks -------------------------------------------------
@@ -105,14 +112,24 @@ void draw() {
       // Draw outline around the target for the current trial
       int targetTarget = trials.get(curTrial).targetTarget;
       if (i == targetTarget) {
-        white.drawFill();
+        if (curTarget == targetTarget) {
+          green.drawFill();
+        }
+        else {
+          white.drawFill();
+        }
         Vector2D borderStart = targetStart.sub(borderWidth);
         Vector2D borderSize = targetSize.add(borderWidth.scale(2));
         (new Rectangle(borderStart, borderSize)).draw();
       }
 
       if (i == curTarget) {
-        brightblue.drawFill();
+        if (curTarget == targetTarget) {
+          green.drawFill();
+        }
+        else {
+          brightblue.drawFill();
+        }
       }
       else {
         gray.drawFill();
@@ -156,49 +173,55 @@ void draw() {
 }
 
 void onLightEvent(float d) {
-  float epsilon = 5;
+  if (hasStarted) {
+    if (isClose && d > lightEpsilon) {
+      // Save the current target
+      selectedTarget = getCurrentTarget();
 
-  if (isClose && d > epsilon) {
-    // Save the current target
-    selectedTarget = getCurrentTarget();
+      toTime = millis();
 
-    //fromTime = (millis() - fromTime) % (4 * cycleSpeed);
+      // Hand retreated from sensor
+      isClose = false;
+    }
+    else if (!isClose && d < lightEpsilon) {
+      // Hand approached sensor
+      isClose = true;
 
-    // Hand retreated from sensor
-    isClose = false;
+      // We're about to start the targets moving again, so let's set the fromTime
+      // so that there's no "jump" in which target is selected.
+      fromTime += millis() - toTime;
+    }
+
+    performNext();
   }
-  else if (!isClose && d < epsilon) {
-    // Hand approached sensor
-
-    isClose = true;
-
-    // We're about to start the targets moving again, so let's set the fromTime
-    // so that there's no "jump" in which target is selected.
-    fromTime = cycleSpeed * selectedTarget;
-  }
-
-  performNext();
 }
 
 void onAccelerometerEvent(float x, float y, float z) {
-  float tiltThreshold = 2.;
-  if (x < -tiltThreshold) {
-    selectedAction = ACTION_CW;
-  }
-  else if (x > tiltThreshold) {
-    selectedAction = ACTION_CCW;
-  }
-  else {
-    selectedAction = "";
-  }
+  if (hasStarted) {
+    float tiltThreshold = 2.;
+    if (x < -tiltThreshold) {
+      selectedAction = ACTION_CW;
+    }
+    else if (x > tiltThreshold) {
+      selectedAction = ACTION_CCW;
+    }
+    else {
+      selectedAction = "";
+    }
 
-  performNext();
+    performNext();
+  }
 }
 
 void mousePressed() {
   if (!hasStarted) {
     hasStarted = true;
+    trials.get(curTrial).start();
     fromTime = millis();
+    toTime = millis();
+  }
+  else if (curTrial >= numTrials) {
+    resetSetup();
   }
 }
 
@@ -218,6 +241,7 @@ void resetTrials() {
 void resetSetup() {
   curTrial = 0;
   hasStarted = false;
+  hasPressed = false;
 
   selectedTarget = 0;
   selectedAction = "";
@@ -548,8 +572,6 @@ class Trial {
   }
 
   boolean isCorrect(int target, String action) {
-    System.out.println(target + " : " + targetTarget);
-    System.out.println(action + " : " + targetAction);
     return target == targetTarget && action.equals(targetAction);
   }
 
