@@ -5,6 +5,12 @@ import ketai.sensors.*;
 KetaiSensor sensor;
 float z0;
 
+// Vibration
+import android.content.Context;
+import android.os.Vibrator;
+final int vibeDuration = 18;
+Vibrator vibe;
+
 // Camera constants
 final int FPS = 16;
 final float THRESHOLD = 30;
@@ -50,6 +56,9 @@ Color brightbluetrans = new Color(26, 136, 255, 0.5);
 void setup() {
   imageMode(CENTER);
   noStroke();
+
+  // Vibration
+  vibe = (Vibrator) getActivity().getSystemService(Context.VIBRATOR_SERVICE);
 
   sensor = new KetaiSensor(this);
   sensor.start();
@@ -103,7 +112,7 @@ void draw() {
       }
 
       if (i == curTarget) {
-        blue.drawFill();
+        brightblue.drawFill();
       }
       else {
         gray.drawFill();
@@ -134,7 +143,7 @@ void draw() {
       curActionDisplay = new Rectangle(width - R, 0, R, height);
     }
 
-    bluetrans.drawFill();
+    brightbluetrans.drawFill();
     curActionDisplay.draw();
   }
   else {
@@ -146,15 +155,19 @@ void draw() {
   }
 }
 
-void onProximityEvent(float d) {
-  if (isClose && d > 1e-6) {
+void onLightEvent(float d) {
+  float epsilon = 5;
+
+  if (isClose && d > epsilon) {
     // Save the current target
     selectedTarget = getCurrentTarget();
+
+    //fromTime = (millis() - fromTime) % (4 * cycleSpeed);
 
     // Hand retreated from sensor
     isClose = false;
   }
-  else if (!isClose && d < 1e-6) {
+  else if (!isClose && d < epsilon) {
     // Hand approached sensor
 
     isClose = true;
@@ -237,7 +250,9 @@ int getCurrentTarget() {
 void performNext() {
   if (curTrial < numTrials) {
     if (trials.get(curTrial).isCorrect(selectedTarget, selectedAction)) {
-      System.out.println("Correct!");
+      // correct!
+      vibe.vibrate(vibeDuration);
+
       if (curTrial < numTrials) {
         trials.get(curTrial).stop(selectedTarget, selectedAction);
         curTrial++;
